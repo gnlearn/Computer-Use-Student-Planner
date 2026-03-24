@@ -289,8 +289,8 @@ def main() -> None:
         {
             "type": "computer_20251124",
             "name": "computer",
-            "display_width_px": 1024,
-            "display_height_px": 768,
+            "display_width_px": 1920,
+            "display_height_px": 1080,
             "display_number": 1,
         },
         {
@@ -303,12 +303,12 @@ def main() -> None:
         },
     ]
 
-    messages = [{"role": "user", "content": "Save a picture of a cat to my desktop."}]
+    messages = [{"role": "user", "content": "Using outlook send an email to nico.gonnella@drake.edu and say hello! with the subject Computer use. Use the mouse and keybord shortcuts like tab and ctrl enter to navigate the email interface."}]
 
     while True:
         response = client.beta.messages.create(
-            model="claude-opus-4-6",
-            max_tokens=1024,
+            model="claude-sonnet-4-6",
+            max_tokens=512,
             tools=tools,
             messages=messages,
             betas=["computer-use-2025-11-24"],
