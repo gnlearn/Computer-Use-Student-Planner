@@ -210,15 +210,40 @@ class AgentMemory:
 
 
 class BrowserAutomation:
-    def __init__(self, headless: bool, timeout_ms: int = 15_000) -> None:
+    def __init__(self, headless: bool, timeout_ms: int = 15_000, profile_dir: str | None = None) -> None:
         self._playwright = sync_playwright().start()
-        self.browser: Browser = self._playwright.chromium.launch(headless=headless)
-        self.page: Page = self.browser.new_page()
+        
+        if profile_dir:
+            # Use persistent context with saved login state
+            self.browser_context = self._playwright.chromium.launch_persistent_context(
+                profile_dir,
+                headless=headless
+            )
+            self.page: Page = self.browser_context.pages[0] if self.browser_context.pages else self.browser_context.new_page()
+            self._browser = None
+        else:
+            # Use regular browser without saved state
+            self._browser = self._playwright.chromium.launch(headless=headless)
+            self.browser_context = None
+            self.page: Page = self._browser.new_page()
+        
         self.page.set_default_timeout(timeout_ms)
 
     def close(self) -> None:
-        self.browser.close()
-        self._playwright.stop()
+        try:
+            if self.browser_context:
+                self.browser_context.close()
+            elif self._browser:
+                self._browser.close()
+        except Exception:
+            # Browser/context may already be closed
+            pass
+        finally:
+            try:
+                self._playwright.stop()
+            except Exception:
+                # Playwright may already be stopped
+                pass
 
     def get_state(self) -> dict[str, Any]:
         return {
@@ -304,20 +329,33 @@ def execute_tool(browser: BrowserAutomation, name: str, tool_input: dict[str, An
     raise ValueError(f"Unsupported tool: {name}")
 
 
-def run_agent(task: str, start_url: str | None, model: str, max_steps: int, headless: bool, timeout_ms: int) -> None:
+def run_agent(task: str, start_url: str | None, model: str, max_steps: int, headless: bool, timeout_ms: int, profile_dir: str | None = None, setup_mode: bool = False) -> None:
     load_dotenv_if_present()
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("Set ANTHROPIC_API_KEY in environment variables or .env before running this script.")
 
-    client = Anthropic(api_key=api_key)
-    memory = AgentMemory(goal=task)
-    browser = BrowserAutomation(headless=headless, timeout_ms=timeout_ms)
-    messages: list[dict[str, Any]] = []
+    browser = BrowserAutomation(headless=headless, timeout_ms=timeout_ms, profile_dir=profile_dir)
 
     try:
         if start_url:
             print(browser.navigate(start_url))
+        
+        # In setup mode, just open the browser and wait for user to manually log in
+        if setup_mode:
+            print("\n[setup mode] Browser is open. You can manually log in now.")
+            print("Press Ctrl+C when finished, or this will wait indefinitely.")
+            try:
+                import time
+                while True:
+                    time.sleep(1)
+            except KeyboardInterrupt:
+                print("\n[setup mode] Login saved. Browser will close.")
+                return
+        
+        client = Anthropic(api_key=api_key)
+        memory = AgentMemory(goal=task)
+        messages: list[dict[str, Any]] = []
 
         for step in range(1, max_steps + 1):
             page_state = browser.get_state()
@@ -370,6 +408,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-steps", type=int, default=30, help="Maximum loop iterations")
     parser.add_argument("--headless", action="store_true", help="Run browser in headless mode")
     parser.add_argument("--timeout-ms", type=int, default=15000, help="Playwright action timeout in milliseconds")
+    parser.add_argument("--profile-dir", default=None, help="Browser profile directory for persistent login state")
+    parser.add_argument("--setup-mode", action="store_true", help="Open browser for manual login (requires Ctrl+C to exit)")
     return parser
 
 
@@ -382,6 +422,8 @@ def main() -> None:
         max_steps=args.max_steps,
         headless=args.headless,
         timeout_ms=args.timeout_ms,
+        profile_dir=args.profile_dir,
+        setup_mode=args.setup_mode,
     )
 
 
