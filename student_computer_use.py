@@ -359,6 +359,7 @@ def run_agent(task: str, start_url: str | None, model: str, max_steps: int, head
 
         print("\n[stopped] Reached max steps before completion.")
     finally:
+        input("Press Enter to close the browser and exit")
         browser.close()
 
 
