@@ -2,9 +2,13 @@ import argparse
 import json
 import os
 import time
+import queue
+import threading
+import tkinter as tk
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+from tkinter import ttk
 
 from anthropic import Anthropic, RateLimitError
 from playwright.sync_api import Browser, BrowserContext, Error as PlaywrightError, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
