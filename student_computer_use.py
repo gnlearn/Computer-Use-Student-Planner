@@ -559,6 +559,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-open", action="store_true", help="Keep browser open when script finishes")
     parser.add_argument("--gui", action="store_true", help="Launch a Tkinter task runner UI")
     return parser
+
+PRESET_TASKS: dict[str, str] = {
+    "Open Blackboard": "Open the student Blackboard homepage and stop when the main dashboard is visible.",
+    "Check Email": "Open the student's email inbox and summarize whether there are any unread messages visible.",
+    "Open Calendar": "Open the calendar page in Outlook and stop when the calendar view is visible.",
+    "Open Wordle": "You are the best wordle player in the world ensure after every guess that the next word you choose would make sense and be the most optimal word possible and make sure guesses are full real words before guessing. Open the Wordle website and start a game. Stop when you solve the puzzle or after 6 guesses, whichever comes first.",
+}
 class StudentPlannerGUI:
     def __init__(self) -> None:
         self.root = tk.Tk()
