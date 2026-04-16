@@ -186,8 +186,8 @@ TOOLS = [
 PRESET_TASKS: dict[str, str] = {
     "Open Blackboard": "Open the student Blackboard homepage and stop when the main dashboard is visible.",
     "Check Email": "Open the student's email inbox and summarize whether there are any unread messages visible.",
-    "Find Assignments": "Open the course portal and look for upcoming assignments or due dates visible on the page.",
-    "Open Calendar": "Open the student's calendar page and stop when the calendar view is visible.",
+    "Open Calendar": "Open the calendar page in Outlook and stop when the calendar view is visible.",
+    "Open Wordle": "You are the best wordle player in the world ensure after every guess that the next word you choose would make sense and be the most optimal word possible and make sure guesses are full real words before guessing. Open the Wordle website and start a game. Stop when you solve the puzzle or after 6 guesses, whichever comes first.",
 }
 
 
@@ -413,7 +413,7 @@ def build_parser() -> argparse.ArgumentParser:
 class StudentPlannerGUI:
     def __init__(self) -> None:
         self.root = tk.Tk()
-        self.root.title("Student Computer Use Planner")
+        self.root.title("Computer Use Assistant")
         self.root.geometry("980x720")
 
         self._message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
@@ -438,7 +438,7 @@ class StudentPlannerGUI:
 
         ttk.Label(
             header,
-            text="Student Computer Use Planner",
+            text="Computer Use Assistant",
             font=("Segoe UI", 18, "bold"),
         ).grid(row=0, column=0, sticky="w")
         ttk.Label(
@@ -495,7 +495,21 @@ class StudentPlannerGUI:
         actions = ttk.Frame(self.root, padding=(16, 0, 16, 12))
         actions.grid(row=2, column=0, sticky="ew")
 
-        self.run_button = ttk.Button(actions, text="Run Task", command=self._start_run)
+        self.run_button = tk.Button(
+            actions,
+            text="Run Task",
+            command=self._start_run,
+            font=("Segoe UI", 11, "bold"),
+            bg="#0f62fe",
+            fg="white",
+            activebackground="#0b57d0",
+            activeforeground="white",
+            padx=20,
+            pady=10,
+            relief="raised",
+            bd=2,
+            cursor="hand2",
+        )
         self.run_button.pack(side="left")
 
         self.status_label = ttk.Label(actions, text="Idle")
