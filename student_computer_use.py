@@ -553,8 +553,216 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--edge-user-data-dir", default=None, help="Edge User Data path (default: %LOCALAPPDATA%/Microsoft/Edge/User Data)")
     parser.add_argument("--edge-profile-dir", default="Default", help="Edge profile name like Default or Profile 1")
     parser.add_argument("--keep-open", action="store_true", help="Keep browser open when script finishes")
+    parser.add_argument("--gui", action="store_true", help="Launch a Tkinter task runner UI")
     return parser
+class StudentPlannerGUI:
+    def __init__(self) -> None:
+        self.root = tk.Tk()
+        self.root.title("Computer Use Assistant")
+        self.root.geometry("980x720")
 
+        self._message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+        self._is_running = False
+
+        self.start_url_var = tk.StringVar(value="")
+        self.model_var = tk.StringVar(value="claude-sonnet-4-5")
+        self.max_steps_var = tk.StringVar(value="30")
+        self.timeout_var = tk.StringVar(value="15000")
+        self.headless_var = tk.BooleanVar(value=False)
+
+        self._build_layout()
+        self.root.after(150, self._drain_queue)
+
+    def _build_layout(self) -> None:
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(2, weight=1)
+
+        header = ttk.Frame(self.root, padding=16)
+        header.grid(row=0, column=0, sticky="ew")
+        header.columnconfigure(0, weight=1)
+
+        ttk.Label(
+            header,
+            text="Computer Use Assistant",
+            font=("Segoe UI", 18, "bold"),
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Label(
+            header,
+            text="Type a task or choose a preset to run the browser automation flow.",
+        ).grid(row=1, column=0, sticky="w", pady=(6, 0))
+
+        controls = ttk.Frame(self.root, padding=(16, 0, 16, 12))
+        controls.grid(row=1, column=0, sticky="nsew")
+        controls.columnconfigure(0, weight=1)
+        controls.columnconfigure(1, weight=1)
+
+        task_frame = ttk.LabelFrame(controls, text="Task", padding=12)
+        task_frame.grid(row=0, column=0, columnspan=2, sticky="ew")
+        task_frame.columnconfigure(0, weight=1)
+
+        self.task_entry = tk.Text(task_frame, height=5, wrap="word")
+        self.task_entry.grid(row=0, column=0, sticky="ew")
+
+        presets_frame = ttk.LabelFrame(controls, text="Preset Tasks", padding=12)
+        presets_frame.grid(row=1, column=0, sticky="nsew", padx=(0, 8), pady=(12, 0))
+        presets_frame.columnconfigure(0, weight=1)
+
+        self.preset_buttons: list[ttk.Button] = []
+        for index, (label, task) in enumerate(PRESET_TASKS.items()):
+            button = ttk.Button(
+                presets_frame,
+                text=label,
+                command=lambda preset_task=task: self._apply_preset(preset_task),
+            )
+            button.grid(row=index, column=0, sticky="ew", pady=(0, 8))
+            self.preset_buttons.append(button)
+
+        settings_frame = ttk.LabelFrame(controls, text="Settings", padding=12)
+        settings_frame.grid(row=1, column=1, sticky="nsew", pady=(12, 0))
+        settings_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(settings_frame, text="Start URL").grid(row=0, column=0, sticky="w", pady=(0, 8))
+        ttk.Entry(settings_frame, textvariable=self.start_url_var).grid(row=0, column=1, sticky="ew", pady=(0, 8))
+
+        ttk.Label(settings_frame, text="Model").grid(row=1, column=0, sticky="w", pady=(0, 8))
+        ttk.Entry(settings_frame, textvariable=self.model_var).grid(row=1, column=1, sticky="ew", pady=(0, 8))
+
+        ttk.Label(settings_frame, text="Max Steps").grid(row=2, column=0, sticky="w", pady=(0, 8))
+        ttk.Entry(settings_frame, textvariable=self.max_steps_var).grid(row=2, column=1, sticky="ew", pady=(0, 8))
+
+        ttk.Label(settings_frame, text="Timeout (ms)").grid(row=3, column=0, sticky="w", pady=(0, 8))
+        ttk.Entry(settings_frame, textvariable=self.timeout_var).grid(row=3, column=1, sticky="ew", pady=(0, 8))
+
+        ttk.Checkbutton(settings_frame, text="Headless browser", variable=self.headless_var).grid(
+            row=4, column=0, columnspan=2, sticky="w"
+        )
+
+        actions = ttk.Frame(self.root, padding=(16, 0, 16, 12))
+        actions.grid(row=2, column=0, sticky="ew")
+
+        self.run_button = tk.Button(
+            actions,
+            text="Run Task",
+            command=self._start_run,
+            font=("Segoe UI", 11, "bold"),
+            bg="#0f62fe",
+            fg="white",
+            activebackground="#0b57d0",
+            activeforeground="white",
+            padx=20,
+            pady=10,
+            relief="raised",
+            bd=2,
+            cursor="hand2",
+        )
+        self.run_button.pack(side="left")
+
+        self.status_label = ttk.Label(actions, text="Idle")
+        self.status_label.pack(side="left", padx=(12, 0))
+
+        output_frame = ttk.LabelFrame(self.root, text="Run Log", padding=12)
+        output_frame.grid(row=3, column=0, sticky="nsew", padx=16, pady=(0, 16))
+        output_frame.columnconfigure(0, weight=1)
+        output_frame.rowconfigure(0, weight=1)
+        self.root.rowconfigure(3, weight=1)
+
+        self.log_text = tk.Text(output_frame, wrap="word", state="disabled")
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+
+        scrollbar = ttk.Scrollbar(output_frame, orient="vertical", command=self.log_text.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        self.log_text.configure(yscrollcommand=scrollbar.set)
+
+    def _apply_preset(self, task: str) -> None:
+        self.task_entry.delete("1.0", tk.END)
+        self.task_entry.insert("1.0", task)
+
+    def _set_running_state(self, is_running: bool) -> None:
+        state = "disabled" if is_running else "normal"
+        self._is_running = is_running
+        self.run_button.config(state=state)
+        for button in self.preset_buttons:
+            button.config(state=state)
+        self.task_entry.config(state=state)
+
+    def _append_log(self, message: str) -> None:
+        self.log_text.config(state="normal")
+        self.log_text.insert(tk.END, f"{message}\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state="disabled")
+
+    def _drain_queue(self) -> None:
+        try:
+            while True:
+                kind, message = self._message_queue.get_nowait()
+                if kind == "log":
+                    self._append_log(message)
+                elif kind == "status":
+                    self.status_label.config(text=message)
+                elif kind == "done":
+                    self._set_running_state(False)
+                    self.status_label.config(text=message)
+        except queue.Empty:
+            pass
+        finally:
+            self.root.after(150, self._drain_queue)
+
+    def _start_run(self) -> None:
+        task = self.task_entry.get("1.0", tk.END).strip()
+        if not task:
+            self.status_label.config(text="Enter a task or click a preset first.")
+            return
+
+        try:
+            max_steps = int(self.max_steps_var.get().strip())
+            timeout_ms = int(self.timeout_var.get().strip())
+        except ValueError:
+            self.status_label.config(text="Max steps and timeout must be numbers.")
+            return
+
+        start_url = self.start_url_var.get().strip() or None
+        model = self.model_var.get().strip() or "claude-sonnet-4-5"
+        headless = self.headless_var.get()
+
+        self._append_log(f"\n=== Starting task ===\n{task}\n")
+        self._set_running_state(True)
+        self.status_label.config(text="Running...")
+
+        worker = threading.Thread(
+            target=self._run_agent_worker,
+            args=(task, start_url, model, max_steps, headless, timeout_ms),
+            daemon=True,
+        )
+        worker.start()
+
+    def _run_agent_worker(
+        self,
+        task: str,
+        start_url: str | None,
+        model: str,
+        max_steps: int,
+        headless: bool,
+        timeout_ms: int,
+    ) -> None:
+        try:
+            result = run_agent(
+                task=task,
+                start_url=start_url,
+                model=model,
+                max_steps=max_steps,
+                headless=headless,
+                timeout_ms=timeout_ms,
+                log_callback=lambda message: self._message_queue.put(("log", message)),
+                on_complete=lambda summary: self._message_queue.put(("status", f"Completed: {summary}")),
+                keep_browser_open=False,
+            )
+            self._message_queue.put(("done", f"Finished: {result}"))
+        except Exception as exc:
+            self._message_queue.put(("log", f"[error] {type(exc).__name__}: {exc}"))
+            self._message_queue.put(("done", f"Failed: {type(exc).__name__}"))
+
+    def run(self) -> None:
+        self.root.mainloop()
 
 def main() -> None:
     args = build_parser().parse_args()
